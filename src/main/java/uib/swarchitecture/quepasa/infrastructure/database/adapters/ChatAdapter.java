@@ -6,24 +6,29 @@ import uib.swarchitecture.quepasa.domain.models.Chat;
 import uib.swarchitecture.quepasa.domain.models.enums.ChatType;
 import uib.swarchitecture.quepasa.domain.ports.ChatPort;
 import uib.swarchitecture.quepasa.infrastructure.database.models.ChatJPA;
+import uib.swarchitecture.quepasa.infrastructure.database.models.ChatJPABuilder;
 import uib.swarchitecture.quepasa.infrastructure.database.models.UserJPA;
 import uib.swarchitecture.quepasa.infrastructure.database.models.enums.ChatTypeJPA;
 import uib.swarchitecture.quepasa.infrastructure.database.repository.ChatRepository;
 import uib.swarchitecture.quepasa.infrastructure.database.repository.MessageRepository;
+import uib.swarchitecture.quepasa.infrastructure.database.repository.UserRepository;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 @Component
 public class ChatAdapter implements ChatPort {
 
     private final ChatRepository chatRepository;
     private final MessageRepository messageRepository;
+    private final UserRepository userRepository;
 
     @Autowired
-    public ChatAdapter(ChatRepository chatRepository, MessageRepository messageRepository) {
+    public ChatAdapter(ChatRepository chatRepository, MessageRepository messageRepository, UserRepository userRepository) {
         this.chatRepository = chatRepository;
         this.messageRepository = messageRepository;
+        this.userRepository = userRepository;
     }
 
     @Override
@@ -66,5 +71,44 @@ public class ChatAdapter implements ChatPort {
                 .map(UserJPA::getUsername)
                 .orElseThrow(() -> new IllegalArgumentException("No other participant found in the direct chat with ID " + chatId));
     }
+
+    @Override
+    public boolean addChat(Long adminId, List<Long> participantsId, String chatName, ChatType chatType) {
+        List<UserJPA> participants = new ArrayList<>();
+        List<UserJPA> admins = new ArrayList<>();
+
+        // Populate the list of participants
+        for (Long participantId : participantsId) {
+            Optional<UserJPA> userOptional = userRepository.findById(participantId);
+            if (userOptional.isPresent()) {
+                participants.add(userOptional.get());
+            } else {
+                throw new IllegalArgumentException("Participant user with ID " + participantId + " not found.");
+            }
+        }
+
+        // Populate the list of admins
+        Optional<UserJPA> adminOptional = userRepository.findById(adminId);
+        if (adminOptional.isPresent()) {
+            admins.add(adminOptional.get());
+        } else {
+            throw new IllegalArgumentException("Administrator user with ID " + adminId + " not found.");
+        }
+
+        // Create the ChatJPA instance using the Builder pattern
+        ChatJPA chat = new ChatJPABuilder()
+                .name(chatName)
+                .type(ChatTypeJPA.GROUP)
+                .participants(participants)
+                .admins(admins)
+                .build();                                // Build the object
+
+        // Save the chat in the database
+        chatRepository.save(chat);
+
+        return true;
+    }
+
+
 
 }
